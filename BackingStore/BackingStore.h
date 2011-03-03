@@ -39,6 +39,9 @@ public:
     enum Param {
         ALLOW_INPLACE_SCROLL,
         ALLOW_TEXTURE_COORDINATE,
+        PRIORITY,
+        QUALITY,
+        ALLOW_PARTIAL_RENDER,
         PARAM_EXTENSIONS_START = 0x10000,
     };
 
@@ -47,6 +50,17 @@ public:
         UPDATE_EXPOSED_ONLY, // only the exposed region should be updated
         UPDATE_MODE_MAX,
         UPDATE_MODE_EXTENSIONS_START = 0x10000,
+    };
+
+    enum RegionAvailability {
+        NOT_AVAILABLE,
+        FULLY_AVAILABLE,
+        PARTIALLY_AVAILABLE,
+    };
+
+    enum UpdateQuality {
+        LOW_QUALITY,
+        HIGH_QUALITY,
     };
 
     // a simple structure representing an update region
@@ -78,11 +92,11 @@ public:
         virtual void inPlaceScroll(IBuffer*, int x, int y, int w, int h, int dx, int dy) = 0; // the user should move a rectangle (x,y,w,h) by offset (dx,dy) on the supplied IBuffer
         // the user should render the content "region" (in scaled document space) onto location (bufferX, bufferY) on the supplied IBuffer.
         // the flag "existingRegion" indicates whether this region is an existing region or an exposed region.
-        virtual void renderToBackingStoreRegion(IBuffer*, int bufferX, int bufferY, UpdateRegion&, bool existingRegion) = 0;
+        virtual void renderToBackingStoreRegion(IBuffer*, int bufferX, int bufferY, UpdateRegion&, UpdateQuality quality, bool existingRegion) = 0;
     };
 
     // When drawing onto the screen, the backing store supplies the user with a list of buffers and regions to copy
-    // to the screen (through the IFrontBuffers and IDrawRegionIterator interfaces)
+    // to the screen.
     // IDrawRegionIterator allows the user to iterate through a list of valid regions (and their associate buffers)
     // that it can use to draw to the screen.
     class IDrawRegionIterator {
@@ -99,8 +113,6 @@ public:
         virtual bool next() = 0; // iterate to next region.  return false if there are no more regions.
     };
 
-    // create an IBackingStore object
-    static IBackingStore* create(IUpdater*);
     virtual ~IBackingStore() {};
 
     // set static parameters for the backing store
@@ -113,23 +125,27 @@ public:
     virtual void finish() = 0; // stop all ongoing updates to the backing store
 
     // Perform an update of the backing store
-    // returns the accessible portion of the backing store.
-    // Any returned IFrontBuffers remain valid until the next update(), invalidate(), or cleanup() call.
+    // returns true if the requested region is available, and beginDrawRegion() can be used to draw the region.
     virtual bool update(UpdateRegion*, // the region to update (in scaled document coordinate).  Must be smaller than or equal to the size of the viewport.  If null, the backing store will find something to update.
                         UpdateMode, // see IBackingStore::UpdateMode
-                        int viewportX, int viewportY, // location of the top left corner of the viewport.  see IFrontBuffers::beginDrawRegion()
+                        int viewportX, int viewportY, // location of the top left corner of the viewport.
                         int viewportWidth, int viewportHeight, // size of the viewport
                         int contentWidth, int contentHeight, // size of the document (in scaled document coordinate)
                         bool contentChanged // content changed since last update?  This is a hint only.
-                        ) = 0; // requested update is an speculative update
+                        ) = 0;
 
-    virtual bool canDrawRegion(IBackingStore::UpdateRegion&) = 0; // returns true if the backing store contains the region
+    // returns the available draw region available for drawing
+    virtual RegionAvailability canDrawRegion(IBackingStore::UpdateRegion&, IBackingStore::UpdateRegion&) = 0;
     // returns a list (iterator) of regions to draw to the screen.
     // (viewportX, viewportY) is the location of the top left corner of the viewport in scaled document coordinate.
     // For example, when scrolling down a document, the viewport moves in the positive y direction and the viewportY will be increasing.
     virtual IDrawRegionIterator* beginDrawRegion(UpdateRegion&, int viewportX, int viewportY) = 0;
 
 };
+
+
+// create an IBackingStore object
+extern "C" IBackingStore* createBackingStore(IBackingStore::IUpdater*);
 
 }; // WebTech
 
